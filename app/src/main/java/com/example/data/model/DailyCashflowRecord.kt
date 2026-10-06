@@ -24,19 +24,19 @@ data class DailyCashflowRecord(
 
     @ColumnInfo(name = "title")
     @Json(name = "title")
-    val title: String, // e.g. "Counter Sale", "Hardware Items", "Shop Rent", "Electricity Bill"
+    val title: String = "", // Used locally in UI, mapped to category if empty
 
     @ColumnInfo(name = "category")
     @Json(name = "category")
-    val category: String, // e.g. "Counter Sale", "Wholesale", "Rent", "Utilities", "Salary", "Transport", "Maintenance", "Tea/Snacks", "Other"
+    val category: String,
 
     @ColumnInfo(name = "payment_mode")
     @Json(name = "payment_mode")
-    val paymentMode: String = "Cash", // "Cash", "UPI", "Card", "Bank Transfer", "Cheque"
+    val paymentMode: String = "Cash",
 
     @ColumnInfo(name = "date")
     @Json(name = "date")
-    val date: String, // "YYYY-MM-DD" e.g. "2026-10-05"
+    val date: String,
 
     @ColumnInfo(name = "note")
     @Json(name = "note")

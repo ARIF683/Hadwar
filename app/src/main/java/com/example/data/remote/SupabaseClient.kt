@@ -27,6 +27,9 @@ import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 class SupabaseClient(
@@ -262,7 +265,7 @@ class SupabaseClient(
 
     suspend fun fetchAllCashflow(): List<DailyCashflowRecord> = withContext(Dispatchers.IO) {
         try {
-            val req = newRequestBuilder("daily_cashflow?select=*&order=created_at.desc&limit=2000")
+            val req = newRequestBuilder("daily_cashflow?select=*&order=date.desc&limit=2000")
                 .get()
                 .build()
             val resp = okHttpClient.newCall(req).execute()
@@ -272,7 +275,13 @@ class SupabaseClient(
                 return@withContext emptyList()
             }
             val body = resp.body?.string() ?: "[]"
-            cashflowListAdapter.fromJson(body) ?: emptyList()
+            val jsonArr = JSONArray(body)
+            val list = mutableListOf<DailyCashflowRecord>()
+            for (i in 0 until jsonArr.length()) {
+                val obj = jsonArr.getJSONObject(i)
+                list.add(parseCashflowFromDb(obj))
+            }
+            list
         } catch (e: Exception) {
             Log.w(tag, "Failed to load cashflow from remote", e)
             emptyList()
@@ -283,45 +292,33 @@ class SupabaseClient(
         if (records.isEmpty()) return@withContext
 
         try {
-            // 1. Try on_conflict=id upsert first
-            val json = cashflowListAdapter.toJson(records)
+            // Build exact payload matching Hardware_website (id, date, type, category, amount, payment_mode, note, created_at)
+            // No 'title' column in Supabase schema
+            val jsonArray = JSONArray()
+            for (rec in records) {
+                val obj = JSONObject().apply {
+                    put("id", rec.id)
+                    put("date", rec.date.ifEmpty { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()) })
+                    put("type", rec.type)
+                    put("category", rec.category)
+                    put("amount", rec.amount)
+                    put("payment_mode", rec.paymentMode)
+                    put("note", rec.note)
+                    put("created_at", rec.createdAt.ifEmpty { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date()) })
+                }
+                jsonArray.put(obj)
+            }
+
             var req = newRequestBuilder("daily_cashflow?on_conflict=id")
                 .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-                .post(json.toRequestBody(jsonMediaType))
+                .post(jsonArray.toString().toRequestBody(jsonMediaType))
                 .build()
             var resp = okHttpClient.newCall(req).execute()
             if (resp.isSuccessful) return@withContext
 
             val err1 = resp.body?.string() ?: "HTTP ${resp.code}"
-            Log.w(tag, "First attempt to upsert cashflow failed: $err1. Trying plain POST...")
+            Log.w(tag, "First attempt to upsert cashflow failed: $err1. Retrying with plain POST...")
 
-            // 2. Try plain POST without on_conflict (in case no unique constraint on id)
-            req = newRequestBuilder("daily_cashflow")
-                .addHeader("Prefer", "return=minimal")
-                .post(json.toRequestBody(jsonMediaType))
-                .build()
-            resp = okHttpClient.newCall(req).execute()
-            if (resp.isSuccessful) return@withContext
-
-            val err2 = resp.body?.string() ?: "HTTP ${resp.code}"
-            Log.w(tag, "Second attempt to insert cashflow failed: $err2. Trying explicit JSON payload...")
-
-            // 3. Explicit JSON formatting for Postgres column names
-            val jsonArray = JSONArray()
-            for (rec in records) {
-                val obj = JSONObject().apply {
-                    put("id", rec.id)
-                    put("type", rec.type)
-                    put("amount", rec.amount)
-                    put("title", rec.title)
-                    put("category", rec.category)
-                    put("payment_mode", rec.paymentMode)
-                    put("date", rec.date)
-                    put("note", rec.note)
-                    put("created_at", rec.createdAt)
-                }
-                jsonArray.put(obj)
-            }
             req = newRequestBuilder("daily_cashflow")
                 .addHeader("Prefer", "return=minimal")
                 .post(jsonArray.toString().toRequestBody(jsonMediaType))
@@ -329,12 +326,12 @@ class SupabaseClient(
             resp = okHttpClient.newCall(req).execute()
             if (resp.isSuccessful) return@withContext
 
-            val err3 = resp.body?.string() ?: "HTTP ${resp.code}"
-            if (resp.code == 404 || err3.contains("PGRST200") || err3.contains("does not exist")) {
-                Log.w(tag, "Table daily_cashflow does not exist on Supabase: $err3")
+            val err2 = resp.body?.string() ?: "HTTP ${resp.code}"
+            if (resp.code == 404 || err2.contains("PGRST200") || err2.contains("does not exist")) {
+                Log.w(tag, "Table daily_cashflow does not exist on Supabase: $err2")
                 return@withContext
             }
-            throw Exception("Failed to upsert cashflow: $err3")
+            throw Exception("Failed to upsert cashflow: $err2")
         } catch (e: Exception) {
             val msg = e.message ?: ""
             if (msg.contains("PGRST200") || msg.contains("404") || msg.contains("does not exist")) {
@@ -355,9 +352,6 @@ class SupabaseClient(
             var resp = okHttpClient.newCall(req).execute()
             if (resp.isSuccessful) return@withContext
 
-            val err1 = resp.body?.string() ?: "HTTP ${resp.code}"
-
-            // Fallback for single ID: id=eq.xxx
             if (ids.size == 1) {
                 val singleId = java.net.URLEncoder.encode(ids[0], "UTF-8")
                 req = newRequestBuilder("daily_cashflow?id=eq.$singleId")
@@ -367,16 +361,14 @@ class SupabaseClient(
                 if (resp.isSuccessful) return@withContext
             }
 
-            val err2 = resp.body?.string() ?: "HTTP ${resp.code}"
-            if (resp.code == 404 || err2.contains("PGRST200") || err2.contains("does not exist")) {
-                Log.w(tag, "Table daily_cashflow does not exist on Supabase: $err2")
+            val err = resp.body?.string() ?: "HTTP ${resp.code}"
+            if (resp.code == 404 || err.contains("PGRST200") || err.contains("does not exist")) {
                 return@withContext
             }
-            throw Exception("Failed to delete cashflow: $err2")
+            throw Exception("Failed to delete cashflow: $err")
         } catch (e: Exception) {
             val msg = e.message ?: ""
             if (msg.contains("PGRST200") || msg.contains("404") || msg.contains("does not exist")) {
-                Log.w(tag, "Table daily_cashflow not found on Supabase: $msg")
                 return@withContext
             }
             throw e
@@ -392,7 +384,13 @@ class SupabaseClient(
             val resp = okHttpClient.newCall(req).execute()
             if (!resp.isSuccessful) return@withContext emptyList()
             val body = resp.body?.string() ?: "[]"
-            quotationListAdapter.fromJson(body) ?: emptyList()
+            val jsonArr = JSONArray(body)
+            val list = mutableListOf<QuotationRecord>()
+            for (i in 0 until jsonArr.length()) {
+                val obj = jsonArr.getJSONObject(i)
+                list.add(parseQuotationFromDb(obj))
+            }
+            list
         } catch (e: Exception) {
             Log.w(tag, "Failed to fetch quotations", e)
             emptyList()
@@ -401,15 +399,41 @@ class SupabaseClient(
 
     suspend fun upsertQuotations(records: List<QuotationRecord>): Unit = withContext(Dispatchers.IO) {
         if (records.isEmpty()) return@withContext
-        val json = quotationListAdapter.toJson(records)
-        val req = newRequestBuilder("quotations?on_conflict=id")
-            .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-            .post(json.toRequestBody(jsonMediaType))
-            .build()
-        val resp = okHttpClient.newCall(req).execute()
-        if (!resp.isSuccessful) {
-            val err = resp.body?.string() ?: "HTTP ${resp.code}"
-            Log.e(tag, "Failed to upsert quotations: $err")
+        try {
+            val jsonArray = JSONArray()
+            for (q in records) {
+                val obj = JSONObject().apply {
+                    put("id", q.id)
+                    put("quotation_no", q.quotationNo)
+                    put("customer_name", q.customerName)
+                    put("customer_phone", q.customerPhone)
+                    put("customer_address", q.customerAddress)
+                    put("date", q.date)
+                    put("valid_until", q.validUntil)
+                    val itemsArray = try { JSONArray(q.itemsJson) } catch (e: Exception) { JSONArray() }
+                    put("items", itemsArray)
+                    put("subtotal", q.subtotal)
+                    put("discount", q.discount)
+                    put("tax_percent", q.taxPercent)
+                    put("tax_amount", q.taxAmount)
+                    put("grand_total", q.grandTotal)
+                    put("status", q.status)
+                    put("notes", q.notes)
+                    put("created_at", q.createdAt)
+                }
+                jsonArray.put(obj)
+            }
+            val req = newRequestBuilder("quotations?on_conflict=id")
+                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                .post(jsonArray.toString().toRequestBody(jsonMediaType))
+                .build()
+            val resp = okHttpClient.newCall(req).execute()
+            if (!resp.isSuccessful) {
+                val err = resp.body?.string() ?: "HTTP ${resp.code}"
+                Log.e(tag, "Failed to upsert quotations: $err")
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to upsert quotations", e)
         }
     }
 
@@ -434,7 +458,13 @@ class SupabaseClient(
             val resp = okHttpClient.newCall(req).execute()
             if (!resp.isSuccessful) return@withContext emptyList()
             val body = resp.body?.string() ?: "[]"
-            ledgerAccountListAdapter.fromJson(body) ?: emptyList()
+            val jsonArr = JSONArray(body)
+            val list = mutableListOf<LedgerAccount>()
+            for (i in 0 until jsonArr.length()) {
+                val obj = jsonArr.getJSONObject(i)
+                list.add(parseLedgerAccountFromDb(obj))
+            }
+            list
         } catch (e: Exception) {
             Log.w(tag, "Failed to fetch ledger accounts", e)
             emptyList()
@@ -443,14 +473,33 @@ class SupabaseClient(
 
     suspend fun upsertLedgerAccounts(records: List<LedgerAccount>): Unit = withContext(Dispatchers.IO) {
         if (records.isEmpty()) return@withContext
-        val json = ledgerAccountListAdapter.toJson(records)
-        val req = newRequestBuilder("ledger_accounts?on_conflict=id")
-            .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-            .post(json.toRequestBody(jsonMediaType))
-            .build()
-        val resp = okHttpClient.newCall(req).execute()
-        if (!resp.isSuccessful) {
-            Log.e(tag, "Failed to upsert ledger accounts: ${resp.body?.string()}")
+        try {
+            val jsonArray = JSONArray()
+            for (acc in records) {
+                val obj = JSONObject().apply {
+                    put("id", acc.id)
+                    put("name", acc.name)
+                    put("phone", acc.phone)
+                    put("address", acc.address)
+                    put("type", acc.type)
+                    put("net_balance", acc.netBalance)
+                    put("credit_limit", acc.creditLimit)
+                    put("notes", acc.notes)
+                    put("created_at", acc.createdAt)
+                    put("updated_at", acc.updatedAt)
+                }
+                jsonArray.put(obj)
+            }
+            val req = newRequestBuilder("ledger_accounts?on_conflict=id")
+                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                .post(jsonArray.toString().toRequestBody(jsonMediaType))
+                .build()
+            val resp = okHttpClient.newCall(req).execute()
+            if (!resp.isSuccessful) {
+                Log.e(tag, "Failed to upsert ledger accounts: ${resp.body?.string()}")
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to upsert ledger accounts", e)
         }
     }
 
@@ -475,7 +524,13 @@ class SupabaseClient(
             val resp = okHttpClient.newCall(req).execute()
             if (!resp.isSuccessful) return@withContext emptyList()
             val body = resp.body?.string() ?: "[]"
-            ledgerEntryListAdapter.fromJson(body) ?: emptyList()
+            val jsonArr = JSONArray(body)
+            val list = mutableListOf<LedgerEntry>()
+            for (i in 0 until jsonArr.length()) {
+                val obj = jsonArr.getJSONObject(i)
+                list.add(parseLedgerEntryFromDb(obj))
+            }
+            list
         } catch (e: Exception) {
             Log.w(tag, "Failed to fetch ledger entries", e)
             emptyList()
@@ -484,14 +539,32 @@ class SupabaseClient(
 
     suspend fun upsertLedgerEntries(records: List<LedgerEntry>): Unit = withContext(Dispatchers.IO) {
         if (records.isEmpty()) return@withContext
-        val json = ledgerEntryListAdapter.toJson(records)
-        val req = newRequestBuilder("ledger_entries?on_conflict=id")
-            .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-            .post(json.toRequestBody(jsonMediaType))
-            .build()
-        val resp = okHttpClient.newCall(req).execute()
-        if (!resp.isSuccessful) {
-            Log.e(tag, "Failed to upsert ledger entries: ${resp.body?.string()}")
+        try {
+            val jsonArray = JSONArray()
+            for (entry in records) {
+                val obj = JSONObject().apply {
+                    put("id", entry.id)
+                    put("account_id", entry.accountId)
+                    put("type", entry.type)
+                    put("amount", entry.amount)
+                    put("balance_after", entry.balanceAfter)
+                    put("date", entry.date)
+                    put("description", entry.description)
+                    put("bill_ref", entry.billRef)
+                    put("created_at", entry.createdAt)
+                }
+                jsonArray.put(obj)
+            }
+            val req = newRequestBuilder("ledger_entries?on_conflict=id")
+                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                .post(jsonArray.toString().toRequestBody(jsonMediaType))
+                .build()
+            val resp = okHttpClient.newCall(req).execute()
+            if (!resp.isSuccessful) {
+                Log.e(tag, "Failed to upsert ledger entries: ${resp.body?.string()}")
+            }
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to upsert ledger entries", e)
         }
     }
 
@@ -534,20 +607,77 @@ class SupabaseClient(
     }
 
     fun parseCashflowFromDb(obj: JSONObject): DailyCashflowRecord {
+        val cat = obj.optString("category", "General")
+        val titleVal = obj.optString("title", cat).ifBlank { cat }
         return DailyCashflowRecord(
             id = obj.optString("id"),
-            type = obj.optString("type"),
+            type = obj.optString("type", "SALE"),
             amount = obj.optDouble("amount", 0.0),
-            title = obj.optString("title"),
-            category = obj.optString("category"),
-            paymentMode = obj.optString("payment_mode", "Cash").ifEmpty { "Cash" },
-            date = obj.optString("date"),
+            title = titleVal,
+            category = cat,
+            paymentMode = obj.optString("payment_mode", obj.optString("paymentMode", "Cash")).ifEmpty { "Cash" },
+            date = obj.optString("date", ""),
             note = obj.optString("note", ""),
-            createdAt = obj.optString("created_at", "")
+            createdAt = obj.optString("created_at", obj.optString("createdAt", ""))
         )
     }
 
-    // Realtime WebSocket support matching Phoenix channels protocol
+    fun parseQuotationFromDb(obj: JSONObject): QuotationRecord {
+        val itemsArray = when {
+            obj.has("items") && !obj.isNull("items") -> obj.get("items").toString()
+            obj.has("items_json") && !obj.isNull("items_json") -> obj.get("items_json").toString()
+            else -> "[]"
+        }
+        return QuotationRecord(
+            id = obj.optString("id"),
+            quotationNo = obj.optString("quotation_no", obj.optString("quotationNo", "")),
+            customerName = obj.optString("customer_name", obj.optString("customerName", "")),
+            customerPhone = obj.optString("customer_phone", obj.optString("customerPhone", "")),
+            customerAddress = obj.optString("customer_address", obj.optString("customerAddress", "")),
+            date = obj.optString("date", ""),
+            validUntil = obj.optString("valid_until", obj.optString("validUntil", "")),
+            itemsJson = itemsArray,
+            subtotal = obj.optDouble("subtotal", 0.0),
+            discount = obj.optDouble("discount", 0.0),
+            taxPercent = obj.optDouble("tax_percent", obj.optDouble("taxPercent", 0.0)),
+            taxAmount = obj.optDouble("tax_amount", obj.optDouble("taxAmount", 0.0)),
+            grandTotal = obj.optDouble("grand_total", obj.optDouble("grandTotal", 0.0)),
+            status = obj.optString("status", "Draft"),
+            notes = obj.optString("notes", ""),
+            createdAt = obj.optString("created_at", obj.optString("createdAt", ""))
+        )
+    }
+
+    fun parseLedgerAccountFromDb(obj: JSONObject): LedgerAccount {
+        return LedgerAccount(
+            id = obj.optString("id"),
+            name = obj.optString("name"),
+            phone = obj.optString("phone", ""),
+            address = obj.optString("address", ""),
+            type = obj.optString("type", "CUSTOMER"),
+            netBalance = obj.optDouble("net_balance", obj.optDouble("netBalance", 0.0)),
+            creditLimit = obj.optDouble("credit_limit", obj.optDouble("creditLimit", 0.0)),
+            notes = obj.optString("notes", ""),
+            createdAt = obj.optString("created_at", obj.optString("createdAt", "")),
+            updatedAt = obj.optString("updated_at", obj.optString("updatedAt", ""))
+        )
+    }
+
+    fun parseLedgerEntryFromDb(obj: JSONObject): LedgerEntry {
+        return LedgerEntry(
+            id = obj.optString("id"),
+            accountId = obj.optString("account_id", obj.optString("accountId", "")),
+            type = obj.optString("type", "GAVE"),
+            amount = obj.optDouble("amount", 0.0),
+            balanceAfter = obj.optDouble("balance_after", obj.optDouble("balanceAfter", 0.0)),
+            date = obj.optString("date", ""),
+            description = obj.optString("description", ""),
+            billRef = obj.optString("bill_ref", obj.optString("billRef", "")),
+            createdAt = obj.optString("created_at", obj.optString("createdAt", ""))
+        )
+    }
+
+    // Realtime WebSocket support matching Phoenix channels protocol and Hardware_website
     fun connectRealtime(
         coroutineScope: CoroutineScope,
         onStatusChanged: (Boolean) -> Unit,
@@ -567,46 +697,28 @@ class SupabaseClient(
         val listener = object : WebSocketListener() {
             override fun onOpen(ws: WebSocket, response: Response) {
                 Log.d(tag, "Realtime WS connected to Supabase")
-                val joinMsg = JSONObject().apply {
-                    put("topic", "realtime:public:items")
-                    put("event", "phx_join")
-                    put("ref", "join_${System.currentTimeMillis()}")
-                    put("payload", JSONObject().apply {
-                        put("config", JSONObject().apply {
-                            put("broadcast", JSONObject().apply { put("self", false) })
-                            put("presence", JSONObject().apply { put("key", "") })
-                            val changeArr = JSONArray().apply {
-                                put(JSONObject().apply {
-                                    put("event", "*")
-                                    put("schema", "public")
-                                    put("table", "items")
+                val tables = listOf("items", "purchases", "daily_cashflow", "quotations", "ledger_accounts", "ledger_entries")
+                tables.forEach { table ->
+                    val joinMsg = JSONObject().apply {
+                        put("topic", "realtime:public:$table")
+                        put("event", "phx_join")
+                        put("ref", "join_${table}_${System.currentTimeMillis()}")
+                        put("payload", JSONObject().apply {
+                            put("config", JSONObject().apply {
+                                put("broadcast", JSONObject().apply { put("self", false) })
+                                put("presence", JSONObject().apply { put("key", "") })
+                                put("postgres_changes", JSONArray().apply {
+                                    put(JSONObject().apply {
+                                        put("event", "*")
+                                        put("schema", "public")
+                                        put("table", table)
+                                    })
                                 })
-                                put(JSONObject().apply {
-                                    put("event", "*")
-                                    put("schema", "public")
-                                    put("table", "daily_cashflow")
-                                })
-                                put(JSONObject().apply {
-                                    put("event", "*")
-                                    put("schema", "public")
-                                    put("table", "quotations")
-                                })
-                                put(JSONObject().apply {
-                                    put("event", "*")
-                                    put("schema", "public")
-                                    put("table", "ledger_accounts")
-                                })
-                                put(JSONObject().apply {
-                                    put("event", "*")
-                                    put("schema", "public")
-                                    put("table", "ledger_entries")
-                                })
-                            }
-                            put("postgres_changes", changeArr)
+                            })
                         })
-                    })
+                    }
+                    ws.send(joinMsg.toString())
                 }
-                ws.send(joinMsg.toString())
 
                 // Start Phoenix heartbeat loop every 20 seconds
                 heartbeatJob?.cancel()
@@ -630,11 +742,11 @@ class SupabaseClient(
                     val root = JSONObject(text)
                     val event = root.optString("event")
                     val payload = root.optJSONObject("payload")
+                    val topic = root.optString("topic")
 
                     if (event == "phx_reply" && payload?.optString("status") == "ok") {
-                        val topic = root.optString("topic")
-                        if (topic == "realtime:public:items") {
-                            Log.d(tag, "Subscribed to realtime:public:items successfully")
+                        if (topic.contains("items")) {
+                            Log.d(tag, "Subscribed to realtime items successfully")
                             onStatusChanged(true)
                         }
                     } else if (event == "system" && payload?.optString("status") == "ok") {
@@ -644,10 +756,10 @@ class SupabaseClient(
                         val dataObj = payload?.optJSONObject("data") ?: payload
                         val table = dataObj?.optString("table") ?: payload?.optString("table") ?: ""
                         val type = dataObj?.optString("type") ?: ""
-                        val record = dataObj?.optJSONObject("record")
-                        val oldRecord = dataObj?.optJSONObject("old_record")
+                        val record = dataObj?.optJSONObject("record") ?: dataObj?.optJSONObject("new")
+                        val oldRecord = dataObj?.optJSONObject("old_record") ?: dataObj?.optJSONObject("old")
 
-                        if (table == "daily_cashflow") {
+                        if (topic.contains("daily_cashflow") || table == "daily_cashflow") {
                             if (type == "INSERT" || type == "UPDATE") {
                                 record?.let {
                                     val cashflow = parseCashflowFromDb(it)
@@ -657,37 +769,37 @@ class SupabaseClient(
                                 val oldId = record?.optString("id") ?: oldRecord?.optString("id")
                                 onCashflowChanged?.invoke("DELETE", null, oldId)
                             }
-                        } else if (table == "quotations") {
+                        } else if (topic.contains("quotations") || table == "quotations") {
                             if (type == "INSERT" || type == "UPDATE") {
                                 record?.let {
-                                    val q = moshi.adapter(QuotationRecord::class.java).fromJson(it.toString())
+                                    val q = parseQuotationFromDb(it)
                                     onQuotationChanged?.invoke(type, q, null)
                                 }
                             } else if (type == "DELETE") {
                                 val oldId = record?.optString("id") ?: oldRecord?.optString("id")
                                 onQuotationChanged?.invoke("DELETE", null, oldId)
                             }
-                        } else if (table == "ledger_accounts") {
+                        } else if (topic.contains("ledger_accounts") || table == "ledger_accounts") {
                             if (type == "INSERT" || type == "UPDATE") {
                                 record?.let {
-                                    val a = moshi.adapter(LedgerAccount::class.java).fromJson(it.toString())
+                                    val a = parseLedgerAccountFromDb(it)
                                     onLedgerAccountChanged?.invoke(type, a, null)
                                 }
                             } else if (type == "DELETE") {
                                 val oldId = record?.optString("id") ?: oldRecord?.optString("id")
                                 onLedgerAccountChanged?.invoke("DELETE", null, oldId)
                             }
-                        } else if (table == "ledger_entries") {
+                        } else if (topic.contains("ledger_entries") || table == "ledger_entries") {
                             if (type == "INSERT" || type == "UPDATE") {
                                 record?.let {
-                                    val e = moshi.adapter(LedgerEntry::class.java).fromJson(it.toString())
+                                    val e = parseLedgerEntryFromDb(it)
                                     onLedgerEntryChanged?.invoke(type, e, null)
                                 }
                             } else if (type == "DELETE") {
                                 val oldId = record?.optString("id") ?: oldRecord?.optString("id")
                                 onLedgerEntryChanged?.invoke("DELETE", null, oldId)
                             }
-                        } else {
+                        } else if (topic.contains("items") || table == "items") {
                             if (type == "INSERT" || type == "UPDATE") {
                                 record?.let {
                                     val item = parseItemFromDb(it)
@@ -729,3 +841,4 @@ class SupabaseClient(
         return webSocket
     }
 }
+

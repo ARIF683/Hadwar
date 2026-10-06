@@ -24,50 +24,66 @@ data class QuotationLineItem(
 data class QuotationRecord(
     @PrimaryKey
     @ColumnInfo(name = "id")
+    @Json(name = "id")
     val id: String,
 
     @ColumnInfo(name = "quotation_no")
+    @Json(name = "quotation_no")
     val quotationNo: String,
 
     @ColumnInfo(name = "customer_name")
+    @Json(name = "customer_name")
     val customerName: String,
 
     @ColumnInfo(name = "customer_phone")
+    @Json(name = "customer_phone")
     val customerPhone: String = "",
 
     @ColumnInfo(name = "customer_address")
+    @Json(name = "customer_address")
     val customerAddress: String = "",
 
     @ColumnInfo(name = "date")
+    @Json(name = "date")
     val date: String,
 
     @ColumnInfo(name = "valid_until")
+    @Json(name = "valid_until")
     val validUntil: String = "",
 
     @ColumnInfo(name = "items_json")
+    @Json(name = "items_json")
     val itemsJson: String,
 
     @ColumnInfo(name = "subtotal")
+    @Json(name = "subtotal")
     val subtotal: Double,
 
     @ColumnInfo(name = "discount")
+    @Json(name = "discount")
     val discount: Double = 0.0,
 
     @ColumnInfo(name = "tax_percent")
+    @Json(name = "tax_percent")
     val taxPercent: Double = 0.0,
 
     @ColumnInfo(name = "tax_amount")
+    @Json(name = "tax_amount")
     val taxAmount: Double = 0.0,
 
     @ColumnInfo(name = "grand_total")
+    @Json(name = "grand_total")
     val grandTotal: Double,
 
     @ColumnInfo(name = "status")
+    @Json(name = "status")
     val status: String = "Draft", // Draft, Sent, Accepted, Converted
 
     @ColumnInfo(name = "notes")
+    @Json(name = "notes")
     val notes: String = "",
 
     @ColumnInfo(name = "created_at")
+    @Json(name = "created_at")
     val createdAt: String
 )
