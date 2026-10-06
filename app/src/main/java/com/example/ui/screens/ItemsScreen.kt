@@ -1,6 +1,6 @@
+package com.example.ui.screens
 import coil.compose.SubcomposeAsyncImage
 import androidx.compose.ui.layout.ContentScale
-package com.example.ui.screens
 
 import android.app.Activity
 import android.content.Intent

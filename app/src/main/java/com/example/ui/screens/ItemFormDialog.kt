@@ -1,3 +1,4 @@
+package com.example.ui.screens
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.CameraAlt
@@ -5,7 +6,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.CircularProgressIndicator
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
-package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
