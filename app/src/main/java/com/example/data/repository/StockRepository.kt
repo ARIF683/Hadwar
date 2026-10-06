@@ -296,7 +296,8 @@ class StockRepository(
         price: Double,
         low: Double,
         aliases: String,
-        openingQty: Double = 0.0
+        openingQty: Double = 0.0,
+        imageUrl: String? = null
     ): Item = withContext(Dispatchers.IO) {
         val now = nowIso()
         if (id != null) {
@@ -318,6 +319,7 @@ class StockRepository(
                 price = price,
                 qty = existing?.qty ?: 0.0,
                 low = low,
+                imageUrl = imageUrl ?: existing?.imageUrl,
                 updatedAt = now
             )
             database.itemDao().insert(updated)
@@ -344,6 +346,7 @@ class StockRepository(
                 price = price,
                 qty = openingQty,
                 low = low,
+                imageUrl = imageUrl,
                 updatedAt = now
             )
             database.itemDao().insert(newItem)

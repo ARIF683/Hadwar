@@ -346,7 +346,8 @@ class StockViewModel(application: Application) : AndroidViewModel(application) {
         price: Double,
         low: Double,
         aliases: String,
-        openingQty: Double
+        openingQty: Double,
+        imageUrl: String? = null
     ) {
         viewModelScope.launch {
             try {
@@ -364,7 +365,8 @@ class StockViewModel(application: Application) : AndroidViewModel(application) {
                     price = price,
                     low = low,
                     aliases = aliases,
-                    openingQty = openingQty
+                    openingQty = openingQty,
+                    imageUrl = imageUrl
                 )
                 showToast(if (id != null) "Item updated" else "Item created")
             } catch (e: Exception) {

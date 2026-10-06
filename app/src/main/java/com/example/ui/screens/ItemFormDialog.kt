@@ -1,3 +1,10 @@
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.CircularProgressIndicator
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 package com.example.ui.screens
 
 import androidx.compose.foundation.clickable
@@ -69,6 +76,29 @@ fun ItemFormDialog(
     var openingQty by remember { mutableStateOf("") }
     var lowStock by remember { mutableStateOf(itemToEdit?.low?.toString() ?: "0") }
     var aliases by remember { mutableStateOf(itemToEdit?.aliases ?: "") }
+    var imageUrl by remember { mutableStateOf(itemToEdit?.imageUrl) }
+    var isUploadingImage by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                isUploadingImage = true
+                val tempId = itemToEdit?.id ?: (System.currentTimeMillis().toString(36) + (1000..9999).random().toString(36))
+                val result = com.example.data.remote.FirebaseStorageManager.uploadItemImage(context, tempId, uri)
+                result.onSuccess { url ->
+                    imageUrl = url
+                    viewModel.showToast("Photo uploaded ✓")
+                }.onFailure { err ->
+                    viewModel.showToast("Upload failed: ${err.message}")
+                }
+                isUploadingImage = false
+            }
+        }
+    }
 
     // Extract existing values from DB
     val typeSuggestions = remember(allItems) {
@@ -282,7 +312,8 @@ fun ItemFormDialog(
                                 price = price.trim().toDoubleOrNull() ?: 0.0,
                                 low = lowStock.trim().toDoubleOrNull() ?: 0.0,
                                 aliases = aliases.trim(),
-                                openingQty = openingQty.trim().toDoubleOrNull() ?: 0.0
+                                openingQty = openingQty.trim().toDoubleOrNull() ?: 0.0,
+                                imageUrl = imageUrl
                             )
                             onDismiss()
                         },

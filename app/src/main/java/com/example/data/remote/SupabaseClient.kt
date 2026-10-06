@@ -602,6 +602,7 @@ class SupabaseClient(
             qty = obj.optDouble("qty", 0.0),
             low = obj.optDouble("low", 0.0),
             unit = obj.optString("unit", "pcs").ifEmpty { "pcs" },
+            imageUrl = obj.optString("image_url", "").takeIf { it.isNotBlank() },
             updatedAt = obj.optString("updated_at", "")
         )
     }

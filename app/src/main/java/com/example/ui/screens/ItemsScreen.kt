@@ -1,3 +1,5 @@
+import coil.compose.SubcomposeAsyncImage
+import androidx.compose.ui.layout.ContentScale
 package com.example.ui.screens
 
 import android.app.Activity
@@ -493,17 +495,52 @@ fun ItemRowCard(
         } else {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(46.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = item.name.take(1).uppercase(),
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 18.sp
-                )
+                if (!item.imageUrl.isNullOrBlank()) {
+                    SubcomposeAsyncImage(
+                        model = item.imageUrl,
+                        contentDescription = item.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        loading = {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = item.name.take(1).uppercase(),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                                    fontSize = 18.sp
+                                )
+                            }
+                        },
+                        error = {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = item.name.take(1).uppercase(),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 18.sp
+                                )
+                            }
+                        }
+                    )
+                } else {
+                    Text(
+                        text = item.name.take(1).uppercase(),
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 18.sp
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(12.dp))
         }

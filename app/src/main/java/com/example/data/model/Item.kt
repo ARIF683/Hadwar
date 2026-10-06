@@ -69,6 +69,9 @@ data class Item(
     @Json(name = "unit")
     val unit: String = "pcs",
 
+    @ColumnInfo(name = "image_url")
+    @Json(name = "image_url")
+    val imageUrl: String? = null,
     @ColumnInfo(name = "updated_at")
     @Json(name = "updated_at")
     val updatedAt: String = ""
