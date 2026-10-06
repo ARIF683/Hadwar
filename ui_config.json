@@ -1,0 +1,20 @@
+{
+  "theme": {
+    "primaryColor": "#2563EB",
+    "accentColor": "#1D4ED8",
+    "storeTitle": "Hardware & Tools Hub",
+    "tagline": "Real-time Inventory & Smart Billing"
+  },
+  "announcement": {
+    "enabled": false,
+    "message": "",
+    "severity": "info",
+    "dismissible": true
+  },
+  "features": {
+    "showQuickActions": true,
+    "showLowStockAlert": true,
+    "showRecentTransactions": true,
+    "allowDirectBilling": true
+  }
+}

@@ -1,0 +1,83 @@
+name: Build & Release Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Publish APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Prepare build files & debug keystore
+        run: |
+          touch .env
+          if [ -f debug.keystore.base64 ]; then
+            echo "Decoding persistent debug keystore..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkeypair -alias androiddebugkey -keypass android -keystore debug.keystore -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 10000 -keyalg RSA -keysize 2048
+          fi
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: "1.0.${{ github.run_number }}"
+
+      - name: Prepare APK
+        run: |
+          mkdir -p release-artifacts
+          cp app/build/outputs/apk/debug/*.apk release-artifacts/StockManager.apk
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "Stock Manager v1.0.${{ github.run_number }}"
+          body: |
+            Automatic build from commit ${{ github.sha }}.
+            version_code: ${{ github.run_number }}
+            version_name: 1.0.${{ github.run_number }}
+            Download **StockManager.apk** below to install.
+          files: release-artifacts/StockManager.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Keep only the latest 2 releases (delete older)
+        run: |
+          echo "Checking releases to keep only the latest 2..."
+          # gh release list outputs releases newest first.
+          # Skip the first 2 releases and delete any older releases and tags.
+          OLD_RELEASES=$(gh release list --limit 100 --json tagName --jq '.[2:][].tagName')
+          if [ -z "$OLD_RELEASES" ]; then
+            echo "No older releases to delete (less than or equal to 2 releases exist)."
+          else
+            for tag in $OLD_RELEASES; do
+              echo "Pruning older release and tag: $tag"
+              gh release delete "$tag" --yes --cleanup-tag || true
+            done
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

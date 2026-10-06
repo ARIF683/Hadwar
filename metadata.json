@@ -1,0 +1,6 @@
+{
+  "name": "Stock Manager",
+  "description": "Hardware inventory, stock tracking, and bill entry manager with Supabase sync",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
