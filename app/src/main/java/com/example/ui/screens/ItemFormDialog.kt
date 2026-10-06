@@ -144,6 +144,69 @@ fun ItemFormDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
+
+                // Photo upload box with NO IMAGE fallback
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .clickable {
+                                photoPickerLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (!imageUrl.isNullOrBlank()) {
+                            AsyncImage(
+                                model = imageUrl,
+                                contentDescription = "Item Photo",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Text(
+                                text = "NO
+IMAGE",
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                        if (isUploadingImage) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Button(
+                            onClick = {
+                                photoPickerLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            enabled = !isUploadingImage
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (imageUrl.isNullOrBlank()) "Upload Photo" else "Change Photo")
+                        }
+                        if (!imageUrl.isNullOrBlank()) {
+                            androidx.compose.material3.TextButton(
+                                onClick = { imageUrl = null }
+                            ) {
+                                Text("Remove", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(14.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },

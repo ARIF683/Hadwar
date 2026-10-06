@@ -525,20 +525,26 @@ fun ItemRowCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = item.name.take(1).uppercase(),
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontSize = 18.sp
+                                    text = "NO
+IMAGE",
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    lineHeight = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                 )
                             }
                         }
                     )
                 } else {
                     Text(
-                        text = item.name.take(1).uppercase(),
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 18.sp
+                        text = "NO
+IMAGE",
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        lineHeight = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                     )
                 }
             }

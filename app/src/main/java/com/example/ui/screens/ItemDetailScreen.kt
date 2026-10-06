@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import coil.compose.SubcomposeAsyncImage
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -148,15 +150,36 @@ fun ItemDetailScreen(
                         modifier = Modifier
                             .size(64.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(BrandBlue.copy(alpha = 0.12f)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = item.name.take(1).uppercase(),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = BrandBlue
-                        )
+                        if (!item.imageUrl.isNullOrBlank()) {
+                            SubcomposeAsyncImage(
+                                model = item.imageUrl,
+                                contentDescription = item.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize(),
+                                error = {
+                                    Text(
+                                        text = "NO
+IMAGE",
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            )
+                        } else {
+                            Text(
+                                text = "NO
+IMAGE",
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                            )
+                        }
                     }
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
